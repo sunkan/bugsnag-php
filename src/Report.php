@@ -42,7 +42,7 @@ class Report
      *
      * @var string
      */
-    protected $name = 'Unknown';
+    protected $name;
 
     /**
      * The error message.

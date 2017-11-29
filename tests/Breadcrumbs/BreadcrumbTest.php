@@ -18,15 +18,6 @@ class BreadcrumbTest extends TestCase
 
     /**
      * @expectedException \InvalidArgumentException
-     * @expectedExceptionMessage The breadcrumb name must be a non-empty string.
-     */
-    public function testEmptyName()
-    {
-        new Breadcrumb('', 'error');
-    }
-
-    /**
-     * @expectedException \InvalidArgumentException
      * @expectedExceptionMessage The breadcrumb name must be at most 30 characters in length.
      */
     public function testLongName()
