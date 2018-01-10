@@ -23,6 +23,12 @@ class SessionDataTest extends TestCase
                 'handled' => 0,
             ],
         ]);
+        $sessionTracker->shouldReceive('setCurrentSession')->andReturn([
+            'events' => [
+                'unhandled' => 1,
+                'handled' => 0,
+            ],
+        ]);
 
         $client = Mockery::mock(Client::class);
         $client->shouldReceive('getSessionTracker')->andReturn($sessionTracker);
@@ -49,6 +55,12 @@ class SessionDataTest extends TestCase
             'events' => [
                 'unhandled' => 0,
                 'handled' => 0,
+            ],
+        ]);
+        $sessionTracker->shouldReceive('setCurrentSession')->andReturn([
+            'events' => [
+                'unhandled' => 0,
+                'handled' => 1,
             ],
         ]);
 

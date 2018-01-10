@@ -43,6 +43,7 @@ class SessionData
             } else {
                 $session['events']['handled'] += 1;
             }
+            $this->client->getSessionTracker()->setCurrentSession($session);
             $report->setSessionData($session);
         }
 

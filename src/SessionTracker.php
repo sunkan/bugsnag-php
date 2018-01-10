@@ -125,7 +125,7 @@ class SessionTracker
         $this->incrementSessions($currentTime);
     }
 
-    protected function setCurrentSession(array $session)
+    public function setCurrentSession(array $session)
     {
         if (!is_null($this->sessionFunction)) {
             call_user_func($this->sessionFunction, $session);
