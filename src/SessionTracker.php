@@ -112,7 +112,7 @@ class SessionTracker
 
     public function startSession()
     {
-        $currentTime = strftime('%Y-%m-%dT%H:%M:00');
+        $currentTime = gmdate('Y-m-d\TH:i:00');
         $session = [
             'id' => uniqid('', true),
             'startedAt' => $currentTime,
@@ -290,7 +290,7 @@ class SessionTracker
         $headers = [
             'Bugsnag-Api-Key' => $this->config->getApiKey(),
             'Bugsnag-Payload-Version' => self::$SESSION_PAYLOAD_VERSION,
-            'Bugsnag-Sent-At' => strftime('%Y-%m-%dT%H:%M:%S'),
+            'Bugsnag-Sent-At' => gmdate('Y-m-d\TH:i:s'),
         ];
         $this->setLastSent();
 

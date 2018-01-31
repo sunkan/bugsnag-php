@@ -201,7 +201,7 @@ class HttpClient
     {
         return [
             'Bugsnag-Api-Key' => $this->config->getApiKey(),
-            'Bugsnag-Sent-At' => strftime('%Y-%m-%dT%H:%M:%S'),
+            'Bugsnag-Sent-At' => gmdate('Y-m-d\TH:i:s'),
             'Bugsnag-Payload-Version' => self::PAYLOAD_VERSION,
         ];
     }
