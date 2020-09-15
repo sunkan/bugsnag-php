@@ -1,5 +1,5 @@
 --TEST--
-Bugsnag\Handler should call the previous exception handler
+Bugsnag\Handler should handle all throwables
 --FILE--
 <?php
 $client = require __DIR__ . '/_prelude.php';
@@ -10,15 +10,21 @@ set_exception_handler(function ($throwable) {
 
 Bugsnag\Handler::register($client);
 
-throw new RuntimeException('abc xyz');
+throw new DivisionByZeroError('22 / 0 = ???');
 
 var_dump('I should not be reached');
 ?>
+--SKIPIF--
+<?php
+if (PHP_MAJOR_VERSION < 7) {
+    echo 'SKIP - the Error type does not exist until PHP 7';
+}
+?>
 --EXPECTF--
-object(RuntimeException)#15 (7) {
+object(DivisionByZeroError)#15 (7) {
   ["message":protected]=>
-  string(7) "abc xyz"
-  ["string":"Exception":private]=>
+  string(12) "22 / 0 = ???"
+  ["string":"Error":private]=>
   string(0) ""
   ["code":protected]=>
   int(0)
@@ -26,14 +32,14 @@ object(RuntimeException)#15 (7) {
   string(%d) "%s"
   ["line":protected]=>
   int(10)
-  ["trace":"Exception":private]=>
+  ["trace":"Error":private]=>
   array(0) {
   }
-  ["previous":"Exception":private]=>
+  ["previous":"Error":private]=>
   NULL
 }
 Guzzle request made (1 event)!
 * Method: 'POST'
 * URI: 'http://localhost/notify'
 * Events:
-    - abc xyz
+    - 22 / 0 = ???
