@@ -10,7 +10,9 @@ use Bugsnag\Shutdown\PhpShutdownStrategy;
 use Exception;
 use GuzzleHttp\Client as Guzzle;
 use GuzzleHttp\Psr7\Uri;
+use Http\Discovery\Psr17FactoryDiscovery;
 use Mockery;
+use Psr\Http\Message\RequestInterface;
 use ReflectionClass;
 
 /**
@@ -56,7 +58,12 @@ class ClientTest extends TestCase
 
         $http = $this->getMockBuilder(HttpClient::class)
                      ->setMethods(['queue'])
-                     ->setConstructorArgs([$this->config, $this->guzzle])
+                     ->setConstructorArgs([
+                         $this->config,
+                         $this->guzzle,
+                         Psr17FactoryDiscovery::findRequestFactory(),
+                         Psr17FactoryDiscovery::findStreamFactory()
+                     ])
                      ->getMock();
         $prop->setValue($client, $http);
 
@@ -124,17 +131,6 @@ class ClientTest extends TestCase
         $this->assertEquals('http://bar.com', $client->getNotifyEndpoint());
     }
 
-    public function testTheNotifyEndpointCanBeSetBySettingItOnAGuzzleInstance()
-    {
-        $guzzle = new Guzzle([
-            $this->getGuzzleBaseOptionName() => 'https://example.com',
-        ]);
-
-        $client = new Client(new Configuration('abc'), null, $guzzle);
-
-        $this->assertEquals('https://example.com', $client->getNotifyEndpoint());
-    }
-
     public function testTheNotifyEndpointWontBeOverwrittenWhenOneIsAlreadySetOnConfiguration()
     {
         $config = new Configuration('abc');
@@ -164,41 +160,13 @@ class ClientTest extends TestCase
         $config = new Configuration('abc');
         $config->setNotifyEndpoint('https://foo.com');
 
-        $guzzle = Client::makeGuzzle();
+        $guzzle = new Guzzle([
+            'base_uri' => Configuration::NOTIFY_ENDPOINT,
+        ]);
 
         $client = new Client($config, null, $guzzle);
 
         $this->assertEquals('https://foo.com', $client->getNotifyEndpoint());
-    }
-
-    public function testTheNotifyEndpointCanBeSetBySettingItOnAGuzzleInstanceWithAnArray()
-    {
-        if (!$this->isUsingGuzzle5()) {
-            $this->markTestSkipped(
-                'This test is not relevant on Guzzle >= 6 as arrays are not allowed'
-            );
-        }
-
-        $guzzle = new Guzzle([
-            $this->getGuzzleBaseOptionName() => [
-                'https://example.com/{version}', ['version' => '1.2'],
-            ],
-        ]);
-
-        $client = new Client(new Configuration('abc'), null, $guzzle);
-
-        $this->assertEquals('https://example.com/1.2', $client->getNotifyEndpoint());
-    }
-
-    public function testTheNotifyEndpointCanBeSetBySettingItOnAGuzzleInstanceWithAUriInstance()
-    {
-        $guzzle = new Guzzle([
-            $this->getGuzzleBaseOptionName() => new Uri('https://example.com:8080/hello/world'),
-        ]);
-
-        $client = new Client(new Configuration('abc'), null, $guzzle);
-
-        $this->assertEquals('https://example.com:8080/hello/world', $client->getNotifyEndpoint());
     }
 
     public function testBeforeNotifySkipsError()
@@ -634,99 +602,6 @@ class ClientTest extends TestCase
         $this->client->flush();
     }
 
-    public function testDeployWorksOutOfTheBox()
-    {
-        $this->guzzlePostWith(
-            'https://build.bugsnag.com',
-            ['json' => ['releaseStage' => 'production', 'apiKey' => 'example-api-key', 'buildTool' => 'bugsnag-php', 'builderName' => exec('whoami'), 'appVersion' => '1.3.1']]
-        );
-
-        $this->client = new Client($this->config = new Configuration('example-api-key'), null, $this->guzzle);
-        $this->config->setAppVersion('1.3.1');
-
-        $this->client->deploy();
-    }
-
-    public function testDeployWorksWithReleaseStage()
-    {
-        $this->guzzlePostWith(
-            'https://build.bugsnag.com',
-            ['json' => ['releaseStage' => 'staging', 'apiKey' => 'example-api-key', 'buildTool' => 'bugsnag-php', 'builderName' => exec('whoami'), 'appVersion' => '1.3.1']]
-        );
-
-        $this->client = new Client($this->config = new Configuration('example-api-key'), null, $this->guzzle);
-        $this->config->setAppVersion('1.3.1');
-        $this->config->setReleaseStage('staging');
-
-        $this->client->deploy();
-    }
-
-    public function testDeployWorksWithAppVersion()
-    {
-        $this->guzzlePostWith(
-            'https://build.bugsnag.com',
-            ['json' => ['releaseStage' => 'production', 'appVersion' => '1.1.0', 'apiKey' => 'example-api-key', 'buildTool' => 'bugsnag-php', 'builderName' => exec('whoami'), 'appVersion' => '1.3.1']]
-        );
-
-        $this->client = new Client($this->config = new Configuration('example-api-key'), null, $this->guzzle);
-        $this->config->setAppVersion('1.3.1');
-
-        $this->client->deploy();
-    }
-
-    public function testDeployWorksWithRepository()
-    {
-        $this->guzzlePostWith(
-            'https://build.bugsnag.com',
-            ['json' => ['sourceControl' => ['repository' => 'foo'], 'releaseStage' => 'production', 'apiKey' => 'example-api-key', 'buildTool' => 'bugsnag-php', 'builderName' => exec('whoami'), 'appVersion' => '1.3.1']]
-        );
-
-        $this->client = new Client($this->config = new Configuration('example-api-key'), null, $this->guzzle);
-        $this->config->setAppVersion('1.3.1');
-
-        $this->client->deploy('foo');
-    }
-
-    public function testDeployWorksWithBranch()
-    {
-        $this->guzzlePostWith(
-            'https://build.bugsnag.com',
-            ['json' => ['releaseStage' => 'production', 'apiKey' => 'example-api-key', 'buildTool' => 'bugsnag-php', 'builderName' => exec('whoami'), 'appVersion' => '1.3.1']]
-        );
-
-        $this->client = new Client($this->config = new Configuration('example-api-key'), null, $this->guzzle);
-        $this->config->setAppVersion('1.3.1');
-
-        $this->client->deploy(null, 'master');
-    }
-
-    public function testDeployWorksWithRevision()
-    {
-        $this->guzzlePostWith(
-            'https://build.bugsnag.com',
-            ['json' => ['sourceControl' => ['revision' => 'bar'], 'releaseStage' => 'production', 'apiKey' => 'example-api-key', 'buildTool' => 'bugsnag-php', 'builderName' => exec('whoami'), 'appVersion' => '1.3.1']]
-        );
-
-        $this->client = new Client($this->config = new Configuration('example-api-key'), null, $this->guzzle);
-        $this->config->setAppVersion('1.3.1');
-
-        $this->client->deploy(null, null, 'bar');
-    }
-
-    public function testDeployWorksWithEverything()
-    {
-        $this->guzzlePostWith(
-            'https://build.bugsnag.com',
-            ['json' => ['sourceControl' => ['repository' => 'baz', 'revision' => 'foo'], 'releaseStage' => 'development', 'appVersion' => '1.3.1', 'apiKey' => 'example-api-key', 'buildTool' => 'bugsnag-php', 'builderName' => exec('whoami'), 'appVersion' => '1.3.1']]
-        );
-
-        $this->client = new Client($this->config = new Configuration('example-api-key'), null, $this->guzzle);
-        $this->config->setReleaseStage('development');
-        $this->config->setAppVersion('1.3.1');
-
-        $this->client->deploy('baz', 'develop', 'foo');
-    }
-
     public function testBuildWorksOutOfTheBox()
     {
         $this->guzzlePostWith(
@@ -823,7 +698,7 @@ class ClientTest extends TestCase
     {
         $this->guzzlePostWith(
             'https://build.bugsnag.com',
-            ['json' => ['builderName' => 'me', 'sourceControl' => ['repository' => 'baz', 'revision' => 'foo', 'provider' => 'github'], 'releaseStage' => 'development', 'appVersion' => '1.3.1', 'apiKey' => 'example-api-key', 'buildTool' => 'bugsnag-php']]
+            ['json' => ['builderName' => 'me', 'sourceControl' => ['repository' => 'baz', 'provider' => 'github', 'revision' => 'foo'], 'releaseStage' => 'development', 'appVersion' => '1.3.1', 'apiKey' => 'example-api-key', 'buildTool' => 'bugsnag-php']]
         );
 
         $this->client = new Client($this->config = new Configuration('example-api-key'), null, $this->guzzle);
@@ -1077,11 +952,13 @@ class ClientTest extends TestCase
     {
         $method = self::getGuzzleMethod();
         $mock = $this->guzzle->expects($this->once())->method($method);
-
-        if ($method === 'request') {
-            return $mock->with($this->equalTo('POST'), $this->equalTo($uri), $this->equalTo($options));
-        }
-
-        return $mock->with($this->equalTo($uri), $this->equalTo($options));
+        return $mock->with($this->callback(function (RequestInterface $request) use($uri, $options) {
+            $this->assertSame($uri, $request->getUri()->__toString());
+            $decodedBody = json_decode($request->getBody()->__toString(), true);
+            foreach ($options['json'] as $key => $value) {
+                $this->assertSame($decodedBody[$key], $value);
+            }
+            return true;
+        }));
     }
 }

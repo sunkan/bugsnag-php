@@ -693,20 +693,4 @@ class Configuration
     {
         return $this->autoCaptureSessions;
     }
-
-    /**
-     * Get the session client.
-     *
-     * @return \GuzzleHttp\ClientInterface
-     *
-     * @deprecated This will be removed in the next major version.
-     */
-    public function getSessionClient()
-    {
-        if (is_null($this->sessionClient)) {
-            $this->sessionClient = Client::makeGuzzle($this->sessionEndpoint);
-        }
-
-        return $this->sessionClient;
-    }
 }

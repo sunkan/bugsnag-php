@@ -17,8 +17,9 @@ use Bugsnag\Request\BasicResolver;
 use Bugsnag\Request\ResolverInterface;
 use Bugsnag\Shutdown\PhpShutdownStrategy;
 use Bugsnag\Shutdown\ShutdownStrategyInterface;
-use Composer\CaBundle\CaBundle;
-use GuzzleHttp;
+use Http\Discovery\Psr17FactoryDiscovery;
+use Http\Discovery\Psr18ClientDiscovery;
+use Psr\Http\Client\ClientInterface;
 
 class Client
 {
@@ -92,9 +93,9 @@ class Client
         $env = new Env();
 
         $config = new Configuration($apiKey ?: $env->get('BUGSNAG_API_KEY'));
-        $guzzle = static::makeGuzzle($notifyEndpoint ?: $env->get('BUGSNAG_ENDPOINT'));
+        $config->setNotifyEndpoint($notifyEndpoint ?: $env->get('BUGSNAG_ENDPOINT') ?: Configuration::NOTIFY_ENDPOINT);
 
-        $client = new static($config, null, $guzzle);
+        $client = new static($config, null, Psr18ClientDiscovery::find());
 
         if ($defaults) {
             $client->registerDefaultCallbacks();
@@ -106,24 +107,29 @@ class Client
     /**
      * @param \Bugsnag\Configuration $config
      * @param \Bugsnag\Request\ResolverInterface|null $resolver
-     * @param \GuzzleHttp\ClientInterface|null $guzzle
+     * @param HttpClient|null $httpClient
      * @param \Bugsnag\Shutdown\ShutdownStrategyInterface|null $shutdownStrategy
      */
     public function __construct(
         Configuration $config,
         ResolverInterface $resolver = null,
-        GuzzleHttp\ClientInterface $guzzle = null,
+        ClientInterface $httpClient = null,
         ShutdownStrategyInterface $shutdownStrategy = null
     ) {
-        $guzzle = $guzzle ?: self::makeGuzzle();
-
-        $this->syncNotifyEndpointWithGuzzleBaseUri($config, $guzzle);
+        if (!$httpClient) {
+            $httpClient = Psr18ClientDiscovery::find();
+        }
 
         $this->config = $config;
         $this->resolver = $resolver ?: new BasicResolver();
         $this->recorder = new Recorder();
         $this->pipeline = new Pipeline();
-        $this->http = new HttpClient($config, $guzzle);
+        $this->http = new HttpClient(
+            $config,
+            $httpClient,
+            Psr17FactoryDiscovery::findRequestFactory(),
+            Psr17FactoryDiscovery::findStreamFactory()
+        );;
         $this->sessionTracker = new SessionTracker($config, $this->http);
 
         $this->registerMiddleware(new NotificationSkipper($config));
@@ -133,91 +139,6 @@ class Client
         // Shutdown strategy is used to trigger flush() calls when batch sending is enabled
         $shutdownStrategy = $shutdownStrategy ?: new PhpShutdownStrategy();
         $shutdownStrategy->registerShutdownStrategy($this);
-    }
-
-    /**
-     * Make a new guzzle client instance.
-     *
-     * @param string|null $base
-     * @param array       $options
-     *
-     * @return GuzzleHttp\ClientInterface
-     */
-    public static function makeGuzzle($base = null, array $options = [])
-    {
-        $key = self::getGuzzleBaseUriOptionName();
-
-        $options[$key] = $base ?: Configuration::NOTIFY_ENDPOINT;
-
-        if ($path = static::getCaBundlePath()) {
-            $options['verify'] = $path;
-        }
-
-        return new GuzzleHttp\Client($options);
-    }
-
-    /**
-     * Get the base URL/URI option name, which depends on the Guzzle version.
-     *
-     * @return string
-     */
-    private static function getGuzzleBaseUriOptionName()
-    {
-        return method_exists(GuzzleHttp\ClientInterface::class, 'request')
-            ? 'base_uri'
-            : 'base_url';
-    }
-
-    /**
-     * Get the base URL/URI, which depends on the Guzzle version.
-     *
-     * @return mixed
-     */
-    private function getGuzzleBaseUri(GuzzleHttp\ClientInterface $guzzle)
-    {
-        return method_exists(GuzzleHttp\ClientInterface::class, 'getBaseUrl')
-            ? $guzzle->getBaseUrl()
-            : $guzzle->getConfig(self::getGuzzleBaseUriOptionName());
-    }
-
-    /**
-     * Ensure the notify endpoint is synchronised with Guzzle's base URL.
-     *
-     * @param \Bugsnag\Configuration $configuration
-     * @param \GuzzleHttp\ClientInterface $guzzle
-     *
-     * @return void
-     */
-    private function syncNotifyEndpointWithGuzzleBaseUri(
-        Configuration $configuration,
-        GuzzleHttp\ClientInterface $guzzle
-    ) {
-        // Don't change the endpoint if one is already set, otherwise we could be
-        // resetting it back to the default as the Guzzle base URL will always
-        // be set by 'makeGuzzle'.
-        if ($configuration->getNotifyEndpoint() !== Configuration::NOTIFY_ENDPOINT) {
-            return;
-        }
-
-        $base = $this->getGuzzleBaseUri($guzzle);
-
-        if (is_string($base) || method_exists($base, '__toString')) {
-            $configuration->setNotifyEndpoint((string) $base);
-        }
-    }
-
-    /**
-     * Get the ca bundle path if one exists.
-     *
-     * @return string|false
-     */
-    protected static function getCaBundlePath()
-    {
-        if (version_compare(PHP_VERSION, '5.6.0') >= 0 || !class_exists(CaBundle::class)) {
-            return false;
-        }
-
-        return realpath(CaBundle::getSystemCaRootBundlePath());
     }
 
     /**
@@ -376,22 +297,6 @@ class Client
         if (!$this->config->isBatchSending()) {
             $this->flush();
         }
-    }
-
-    /**
-     * Notify Bugsnag of a deployment.
-     *
-     * @param string|null $repository the repository from which you are deploying the code
-     * @param string|null $branch     the source control branch from which you are deploying
-     * @param string|null $revision   the source control revision you are currently deploying
-     *
-     * @return void
-     *
-     * @deprecated Use {@see Client::build} instead.
-     */
-    public function deploy($repository = null, $branch = null, $revision = null)
-    {
-        $this->build($repository, $revision);
     }
 
     /**
@@ -916,17 +821,5 @@ class Client
     public function shouldCaptureSessions()
     {
         return $this->config->shouldCaptureSessions();
-    }
-
-    /**
-     * Get the session client.
-     *
-     * @return \GuzzleHttp\ClientInterface
-     *
-     * @deprecated This will be removed in the next major version.
-     */
-    public function getSessionClient()
-    {
-        return $this->config->getSessionClient();
     }
 }

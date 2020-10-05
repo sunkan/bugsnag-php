@@ -3,7 +3,9 @@
 namespace Bugsnag;
 
 use Exception;
-use GuzzleHttp\ClientInterface;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\RequestFactoryInterface;
+use Psr\Http\Message\StreamFactoryInterface;
 use RuntimeException;
 
 class HttpClient
@@ -14,9 +16,9 @@ class HttpClient
     protected $config;
 
     /**
-     * @var \GuzzleHttp\ClientInterface
+     * @var ClientInterface
      */
-    protected $guzzle;
+    protected $httpClient;
 
     /**
      * The queue of reports to send.
@@ -50,13 +52,29 @@ class HttpClient
     const PAYLOAD_VERSION = self::NOTIFY_PAYLOAD_VERSION;
 
     /**
-     * @param \Bugsnag\Configuration $config
-     * @param \GuzzleHttp\ClientInterface $guzzle
+     * @var RequestFactoryInterface
      */
-    public function __construct(Configuration $config, ClientInterface $guzzle)
-    {
+    private $requestFactory;
+
+    /**
+     * @var StreamFactoryInterface
+     */
+    private $streamFactory;
+
+    /**
+     * @param \Bugsnag\Configuration $config
+     * @param ClientInterface $httpClient
+     */
+    public function __construct(
+        Configuration $config,
+        ClientInterface $httpClient,
+        RequestFactoryInterface $requestFactory,
+        StreamFactoryInterface $streamFactory
+    ) {
         $this->config = $config;
-        $this->guzzle = $guzzle;
+        $this->httpClient = $httpClient;
+        $this->requestFactory = $requestFactory;
+        $this->streamFactory = $streamFactory;
     }
 
     /**
@@ -266,11 +284,15 @@ class HttpClient
      */
     protected function post($uri, array $options = [])
     {
-        if (method_exists(ClientInterface::class, 'request')) {
-            $this->guzzle->request('POST', $uri, $options);
-        } else {
-            $this->guzzle->post($uri, $options);
+        $request = $this->requestFactory->createRequest('POST', $uri);
+        $headers = $options['headers'] ?? [];
+        foreach ($headers as $headerName => $headerValue) {
+            $request = $request->withHeader($headerName, $headerValue);
         }
+        $request = $request->withBody($this->streamFactory->createStream(json_encode($options['json'] ?? '')));
+        $request = $request->withProtocolVersion('1.1');
+
+        $this->httpClient->sendRequest($request);
     }
 
     /**

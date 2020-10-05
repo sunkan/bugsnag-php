@@ -45,7 +45,7 @@ abstract class TestCase extends BaseTestCase
      */
     protected static function getGuzzleMethod()
     {
-        return method_exists(ClientInterface::class, 'request') ? 'request' : 'post';
+        return 'sendRequest';
     }
 
     /**

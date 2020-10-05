@@ -18,7 +18,7 @@ throw new RuntimeException('abc xyz');
 var_dump('I should not be reached');
 ?>
 --EXPECTF--
-object(RuntimeException)#15 (7) {
+object(RuntimeException)#17 (7) {
   ["message":protected]=>
   string(7) "abc xyz"
   ["string":"Exception":private]=>

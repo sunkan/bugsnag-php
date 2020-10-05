@@ -5,8 +5,10 @@ namespace Bugsnag\Tests;
 use Bugsnag\Configuration;
 use Bugsnag\HttpClient;
 use Bugsnag\Report;
+use Bugsnag\Request\RequestInterface;
 use Exception;
 use GuzzleHttp\Client;
+use Http\Discovery\Psr17FactoryDiscovery;
 
 class HttpClientTest extends TestCase
 {
@@ -22,7 +24,12 @@ class HttpClientTest extends TestCase
                              ->setMethods([self::getGuzzleMethod()])
                              ->getMock();
 
-        $this->http = new HttpClient($this->config, $this->guzzle);
+        $this->http = new HttpClient(
+            $this->config,
+            $this->guzzle,
+            Psr17FactoryDiscovery::findRequestFactory(),
+            Psr17FactoryDiscovery::findStreamFactory()
+        );
     }
 
     private static function getInvocationParameters($invocation)
@@ -44,22 +51,20 @@ class HttpClientTest extends TestCase
         $this->http->send();
 
         $this->assertCount(1, $invocations = $spy->getInvocations());
+        /** @var \Psr\Http\Message\RequestInterface[] $params */
         $params = self::getInvocationParameters($invocations[0]);
         $this->assertCount(self::getGuzzleExpectedParamCount(), $params);
-        $this->assertSame($this->config->getNotifyEndpoint(), self::getGuzzlePostUriParam($params));
-        $options = self::getGuzzlePostOptionsParam($params);
-        $this->assertInternalType('array', $options);
-        $this->assertInternalType('array', $options['json']['notifier']);
-        $this->assertInternalType('array', $options['json']['events']);
-        $this->assertSame([], $options['json']['events'][0]['user']);
-        $this->assertSame(['foo' => 'bar'], $options['json']['events'][0]['metaData']);
-        $this->assertSame('6015a72ff14038114c3d12623dfb018f', $options['json']['apiKey']);
-        $this->assertSame('4.0', $options['json']['events'][0]['payloadVersion']);
+        $this->assertSame($this->config->getNotifyEndpoint(), $params[0]->getUri()->__toString());
+        $body = json_decode($params[0]->getBody()->__toString(), true);
+        $this->assertSame([], $body['events'][0]['user']);
+        $this->assertSame(['foo' => 'bar'], $body['events'][0]['metaData']);
+        $this->assertSame('6015a72ff14038114c3d12623dfb018f', $body['apiKey']);
+        $this->assertSame('4.0', $body['events'][0]['payloadVersion']);
 
-        $headers = $options['headers'];
-        $this->assertSame('6015a72ff14038114c3d12623dfb018f', $headers['Bugsnag-Api-Key']);
+        $headers = $params[0]->getHeaders();
+        $this->assertSame('6015a72ff14038114c3d12623dfb018f', $headers['Bugsnag-Api-Key'][0]);
         $this->assertArrayHasKey('Bugsnag-Sent-At', $headers);
-        $this->assertSame('4.0', $headers['Bugsnag-Payload-Version']);
+        $this->assertSame('4.0', $headers['Bugsnag-Payload-Version'][0]);
     }
 
     public function testHttpClientMultipleSend()
@@ -91,20 +96,18 @@ class HttpClientTest extends TestCase
         $this->assertCount(1, $invocations = $spy->getInvocations());
         $params = self::getInvocationParameters($invocations[0]);
         $this->assertCount(self::getGuzzleExpectedParamCount(), $params);
-        $this->assertSame($this->config->getNotifyEndpoint(), self::getGuzzlePostUriParam($params));
-        $options = self::getGuzzlePostOptionsParam($params);
-        $this->assertInternalType('array', $options);
-        $this->assertInternalType('array', $options['json']['notifier']);
-        $this->assertInternalType('array', $options['json']['events']);
-        $this->assertSame([], $options['json']['events'][0]['user']);
-        $this->assertArrayNotHasKey('metaData', $options['json']['events'][0]);
-        $this->assertSame('6015a72ff14038114c3d12623dfb018f', $options['json']['apiKey']);
-        $this->assertSame('4.0', $options['json']['events'][0]['payloadVersion']);
+        $this->assertSame($this->config->getNotifyEndpoint(), $params[0]->getUri()->__toString());
 
-        $headers = $options['headers'];
-        $this->assertSame('6015a72ff14038114c3d12623dfb018f', $headers['Bugsnag-Api-Key']);
+        $body = json_decode($params[0]->getBody()->__toString(), true);
+        $this->assertSame([], $body['events'][0]['user']);
+        $this->assertArrayNotHasKey('metaData', $body['events'][0]);
+        $this->assertSame('6015a72ff14038114c3d12623dfb018f', $body['apiKey']);
+        $this->assertSame('4.0', $body['events'][0]['payloadVersion']);
+
+        $headers = $params[0]->getHeaders();
+        $this->assertSame('6015a72ff14038114c3d12623dfb018f', $headers['Bugsnag-Api-Key'][0]);
         $this->assertArrayHasKey('Bugsnag-Sent-At', $headers);
-        $this->assertSame('4.0', $headers['Bugsnag-Payload-Version']);
+        $this->assertSame('4.0', $headers['Bugsnag-Payload-Version'][0]);
     }
 
     public function testMassiveUserHttpClient()
@@ -140,20 +143,18 @@ class HttpClientTest extends TestCase
         $this->assertCount(1, $invocations = $spy->getInvocations());
         $params = self::getInvocationParameters($invocations[0]);
         $this->assertCount(self::getGuzzleExpectedParamCount(), $params);
-        $this->assertSame($this->config->getNotifyEndpoint(), self::getGuzzlePostUriParam($params));
-        $options = self::getGuzzlePostOptionsParam($params);
-        $this->assertInternalType('array', $options);
-        $this->assertInternalType('array', $options['json']['notifier']);
-        $this->assertInternalType('array', $options['json']['events']);
-        $this->assertSame(['foo' => 'bar'], $options['json']['events'][0]['user']);
-        $this->assertSame([], $options['json']['events'][0]['metaData']);
-        $this->assertSame('6015a72ff14038114c3d12623dfb018f', $options['json']['apiKey']);
-        $this->assertSame('4.0', $options['json']['events'][0]['payloadVersion']);
+        $this->assertSame($this->config->getNotifyEndpoint(), $params[0]->getUri()->__toString());
 
-        $headers = $options['headers'];
-        $this->assertSame('6015a72ff14038114c3d12623dfb018f', $headers['Bugsnag-Api-Key']);
+        $body = json_decode($params[0]->getBody()->__toString(), true);
+        $this->assertSame(['foo' => 'bar'], $body['events'][0]['user']);
+        $this->assertSame([], $body['events'][0]['metaData']);
+        $this->assertSame('6015a72ff14038114c3d12623dfb018f', $body['apiKey']);
+        $this->assertSame('4.0', $body['events'][0]['payloadVersion']);
+
+        $headers = $params[0]->getHeaders();
+        $this->assertSame('6015a72ff14038114c3d12623dfb018f', $headers['Bugsnag-Api-Key'][0]);
         $this->assertArrayHasKey('Bugsnag-Sent-At', $headers);
-        $this->assertSame('4.0', $headers['Bugsnag-Payload-Version']);
+        $this->assertSame('4.0', $headers['Bugsnag-Payload-Version'][0]);
     }
 
     public function testHttpClientFails()
@@ -172,7 +173,7 @@ class HttpClientTest extends TestCase
 
     private function getGuzzleExpectedParamCount()
     {
-        return self::getGuzzleMethod() === 'request' ? 3 : 2;
+        return 1;
     }
 
     private function getGuzzlePostUriParam(array $params)

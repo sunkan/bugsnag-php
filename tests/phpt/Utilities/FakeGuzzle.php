@@ -15,7 +15,6 @@ use GuzzleHttp\ClientInterface;
 use RuntimeException;
 
 $fakeGuzzleMapping = [
-    5 => FakeGuzzle5::class,
     6 => FakeGuzzle6::class,
     7 => FakeGuzzle7::class,
 ];

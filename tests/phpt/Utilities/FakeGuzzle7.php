@@ -14,7 +14,7 @@ use Psr\Http\Message\ResponseInterface;
  *
  * This should never be used directly; use 'FakeGuzzle' instead!
  */
-class FakeGuzzle7 implements ClientInterface
+class FakeGuzzle7 implements ClientInterface, \Psr\Http\Client\ClientInterface
 {
     public function request($method, $uri, array $options = []): ResponseInterface
     {
@@ -41,5 +41,13 @@ class FakeGuzzle7 implements ClientInterface
     public function getConfig(?string $option = null)
     {
         throw new BadMethodCallException(__METHOD__.' is not implemented!');
+    }
+
+    public function sendRequest(RequestInterface $request): ResponseInterface
+    {
+        $body = json_decode($request->getBody()->__toString(), true);
+        reportRequest($request->getMethod(), $request->getUri()->__toString(), ['json' => $body]);
+
+        return new Response();
     }
 }
